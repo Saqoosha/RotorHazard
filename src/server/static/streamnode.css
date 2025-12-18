@@ -51,7 +51,7 @@ body {
 }
 
 #position {
-	background: background: hsl(25, 85%, 55%);
+	background: hsl(25, 85%, 55%);
 	color: #000;
 	background: var(--position_background_color);
 	color: var(--position_foreground_color);
@@ -77,10 +77,10 @@ body {
 	background: var(--pilot_color);
 	color: var(--contrast_pilot_color);
 
-	font-size: 2.5rem;
-	line-height: 1.5;
-	padding: 0 0.25em;
-	height: 1.5em;
+	font-size: 3rem;
+	line-height: 1;
+	padding: 0 0.5em 0 0.2em;
+	height: 4.5rem;
 
 	position: absolute;
 	top: 0;
@@ -88,6 +88,7 @@ body {
 	right: 0;
 
 	display: flex;
+	align-items: center;
 }
 
 #callsign {
@@ -97,20 +98,32 @@ body {
 	overflow: hidden;
 	white-space: nowrap;
 	display: block;
+	padding: 0.5rem 0;
 }
 
 #rank_stat {
 	flex: 0 0 auto;
 }
 
+#pilot-photo {
+	height: calc(4.5rem - 0.5rem);
+	width: auto;
+	margin: 0 1rem 0 0;
+	border-radius: 8px;
+}
+
 #current-laps {
 	position: absolute;
-	top: 4rem;
+	top: 4.5rem;
 	padding: 0.25rem 0.5rem;
 	right: 0;
+	width: calc(840px - 624px - 0.5rem * 2);
+	height: calc(100% - 4.5rem - 0.25rem*2 - 5px);
+	bottom: 5px;
 	text-align: right;
 	font-size: 2rem;
 	color: #fff;
+	background-color: rgba(0, 0, 0, 0.5);
 	text-shadow:
 		0.07em 0.07em 0 #000,
 		0.13em 0.07em 0 #000,
@@ -140,4 +153,65 @@ body {
 		0.03em -0.03em 0 var(--contrast_fast_lap_color),
 		-0.03em 0.03em 0 var(--contrast_fast_lap_color),
 		0.03em 0.03em 0 var(--contrast_fast_lap_color);
+}
+
+/* Ready state display */
+#ready-display {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 5px;
+	padding-top: 72px;
+	display: flex;
+	flex-direction: column;
+	align-items: center;
+	justify-content: center;
+	z-index: 1000;
+}
+
+#ready-display::before {
+	content: '';
+	position: absolute;
+	top: 0;
+	left: 0;
+	right: 0;
+	bottom: 0;
+	background: var(--pilot_color);
+	opacity: 0.7;
+	z-index: -1;
+}
+
+#ready-pilot-photo {
+	width: 250px;
+	height: 250px;
+	object-fit: cover;
+	border-radius: 10%;
+	display: block;
+}
+
+#ready-pilot-photo:not([src]), #ready-pilot-photo[src=""] {
+	display: none;
+}
+
+#ready-pilot-name {
+	font-size: 4rem;
+	font-weight: bold;
+	color: #fff;
+	margin-bottom: 1rem;
+}
+
+#ready-status {
+	font-size: 2.5rem;
+	color: #ccc;
+	text-shadow:
+		0.05em 0.05em 0 #000,
+		0.1em 0.05em 0 #000,
+		0.05em 0.1em 0 #000,
+		0.1em 0.1em 0 #000,
+		-0.02em -0.02em 0 #000,
+		0.02em -0.02em 0 #000,
+		-0.02em 0.02em 0 #000,
+		0.02em 0.02em 0 #000;
+	margin-bottom: 5px;
 }
