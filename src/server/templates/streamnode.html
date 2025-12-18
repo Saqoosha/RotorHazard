@@ -51,14 +51,14 @@
 						var color = colorvalToHex(hn.activeColor);
 						var contrast_color = contrastColor(color);
 						$('html').css('--pilot_color', color);
-						$('html').css('--contrast_pilot_color', contrast_color);
+						$('html').css('--contrast_pilot_color', '#ffffff');
 						$('html').css('--position_foreground_color', color);
 						$('html').css('--position_background_color', contrast_color);
 						$('html').css('--fast_lap_color', color);
 						$('html').css('--contrast_fast_lap_color', contrast_color);
 					} else {
 						$('html').css('--pilot_color', 'hsl(var(--hue_0), var(--sat_0), var(--lum_0_low))');
-						$('html').css('--contrast_pilot_color', 'var(--contrast_0_low)');
+						$('html').css('--contrast_pilot_color', '#ffffff');
 						$('html').css('--position_background_color', 'hsl(var(--hue_1), var(--sat_1), var(--lum_1_high))');
 						$('html').css('--position_foreground_color', 'var(--contrast_1_high)');
 						$('html').css('--fast_lap_color', 'hsl(var(--hue_1), var(--sat_1), var(--lum_1_high))');
@@ -66,6 +66,8 @@
 					}
 				}
 			}
+			// Request pilot photo when heat changes
+			socket.emit('get_pilot_photo', {'node': streamnode});
 		});
 
 		socket.on('current_laps', function (msg) {
@@ -76,6 +78,22 @@
 		socket.on('race_status', function (msg) {
 			rotorhazard.event.race_status = msg;
 			show_current_laps();
+			updateDisplayMode();
+		});
+
+		socket.on('pilot_photo', function (msg) {
+			if(msg.node == streamnode) {
+				if(msg.url && msg.url !== '') {
+					$('#pilot-photo').attr('src', msg.url);
+					$('#pilot-photo').show();
+					$('#ready-pilot-photo').attr('src', msg.url);
+					$('#ready-pilot-photo').show();
+				} else {
+					$('#pilot-photo').hide();
+					$('#ready-pilot-photo').attr('src', '');
+					$('#ready-pilot-photo').hide();
+				}
+			}
 		});
 
 		function show_current_laps() {
@@ -155,6 +173,8 @@
 
 						$('#position').html((pilot_data.position != null ? pilot_data.position : '-'));
 						$('#callsign').html(pilot_data.callsign);
+						$('#ready-pilot-name').html(pilot_data.callsign);
+						$('#ready-pilot-name').show();
 						// $('#last_lap').html(pilot_data.last_lap ? pilot_data.last_lap : '0:00.000');
 						// $('#team_name').html(pilot_data.team_name);
 						// $('#laps').html(pilot_data.laps);
@@ -178,9 +198,31 @@
 					$('#callsign').html('');
 					$('#rank_stat').html('');
 					$('#current-laps').html('');
+					$('#pilot-photo').hide();
+					$('#ready-pilot-photo').hide();
+					$('#ready-pilot-name').hide();
 				}
 			}
+			// Request pilot photo when leaderboard updates
+			socket.emit('get_pilot_photo', {'node': streamnode});
+			updateDisplayMode();
 		});
+
+		function updateDisplayMode() {
+			if (rotorhazard.event.race_status) {
+				// Race status: READY=0, STAGING=3, RACING=1, DONE=2
+				if (rotorhazard.event.race_status.race_status === 0) {
+					// READY state - show overlay
+					$('#ready-display').fadeIn(300);
+				} else {
+					// Other states - fade out overlay
+					$('#ready-display').fadeOut(300);
+				}
+			}
+		}
+
+		// Initial display mode
+		updateDisplayMode();
 	});
 
 </script>
@@ -188,9 +230,14 @@
 <main class="page-streamnode">
 	<div id="position"></div>
 	<div id="pilot-info">
+		<img id="pilot-photo" src="" style="display:none;" />
 		<div id="callsign"></div>
 		<div id="rank_stat"></div>
 	</div>
 	<div id="current-laps"></div>
+	<div id="ready-display" style="display:none;">
+		<img id="ready-pilot-photo" src="" />
+		<div id="ready-pilot-name"></div>
+	</div>
 </main>
 {% endblock %}
