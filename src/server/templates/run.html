@@ -1066,7 +1066,7 @@
 			if (!msg.node_finished || rotorhazard.voice_if_node_finished) {
 				if (rotorhazard.min_lap_s * 1000 < msg.raw_time) {
 					var ttstext = '';
-	
+
 					if (rotorhazard.voice_callsign == 1 ||
 								(rotorhazard.voice_callsign == 2 && (!msg.team_phonetic))) {
 						if (msg.callsign)
@@ -1074,21 +1074,21 @@
 						if (msg.pilot)
 							ttstext = msg.pilot;
 					}
-	
+
 					if (msg.lap && (rotorhazard.voice_lap_count == 1 ||
 								(rotorhazard.voice_lap_count == 2 && (!msg.team_phonetic)))) {
 						if (ttstext.length > 0)
 							ttstext += ", ";
 						ttstext += __l('Lap') + " " + msg.lap;
 					}
-	
+
 					if (rotorhazard.voice_lap_time == 1 ||
 								(rotorhazard.voice_lap_time == 2 && (!msg.team_phonetic))) {
 						if (ttstext.length > 0)
 							ttstext += ", ";
 						ttstext += msg.phonetic;
 					}
-	
+
 					if (msg.team_phonetic && rotorhazard.voice_team_lap_count != 0) {
 						if (ttstext.length > 0)
 							ttstext += ", ";
@@ -1098,7 +1098,7 @@
 							ttstext += msg.team_phonetic;
 						}
 					}
-	
+
 					if (ttstext.length > 0) {
 						if (msg.leader_flag) {
 							if (rotorhazard.beep_race_leader_lap) {
@@ -1446,12 +1446,12 @@
 			rotorhazard.voice_if_node_finished = parseInt($(this).val());
 			rotorhazard.saveData();
 		});
-		
+
 		$('#voice_split_timer').change(function (event) {
 			rotorhazard.voice_split_timer = parseInt($(this).val());
 			rotorhazard.saveData();
 		});
-		
+
 		$('#voice_race_leader').change(function (event) {
 			rotorhazard.voice_race_leader = parseInt($(this).val());
 			rotorhazard.saveData();
@@ -3407,6 +3407,7 @@
 <div id="custom-ui"></div>
 
 <button id="audio-unlock">{{ __('Enable Audio') }}</button>
+<script src="/static/udgp.js"></script>
 </main>
 
 <dialog id="marshal-dialog" closedby="any">
