@@ -102,21 +102,8 @@ function convertColor(color) {
 }
 
 function contrastColor(hexcolor) {
-	hex = hexcolor.replace(/[^0-9A-F]/gi, '');
-	var bigint = parseInt(hex, 16);
-	var r = (bigint >> 16) & 255;
-	var g = (bigint >> 8) & 255;
-	var b = bigint & 255;
-
-	var brightness = ((r * 299) + (g * 587) + (b * 114)) / 255000;
-
-	// values range from 0 to 1
-	// anything greater than 0.5 should be bright enough for dark text
-	if (brightness >= 0.5) {
-		return "#000000"
-	} else {
-		return "#ffffff"
-	}
+	// Always return white for contrast
+	return "#ffffff"
 }
 
 function rgbtoHex(rgb) {
