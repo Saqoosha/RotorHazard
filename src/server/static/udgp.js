@@ -195,30 +195,28 @@ function initPenaltySystem($) {
             }
         }
 
-        // Inject checkbox into marshal form
+        // Inject checkbox into sidebar
         function injectMarshalCheckbox() {
-            var form = document.querySelector('.marshal-edit, .panel-content');
-            if (!form) return;
+            var sidebar = document.querySelector('.sidebar-controls');
+            if (!sidebar) return;
 
             // Skip if already injected
-            if (document.querySelector('.udgp-penalty-wrap')) {
+            if (document.getElementById('marshal-penalty-cb')) {
                 return;
             }
 
-            var wrap = document.createElement('div');
-            wrap.className = 'udgp-penalty-wrap marshal-penalty';
-            wrap.innerHTML = '<label class="udgp-penalty-label">' +
-                '<input type="checkbox" class="udgp-penalty-cb" id="marshal-penalty-cb"> ' +
-                '<strong>UDGP Penalty (-2 laps)</strong>' +
+            // Create a section similar to other sidebar sections
+            var section = document.createElement('div');
+            section.className = 'control-block udgp-penalty-section';
+            section.innerHTML =
+                '<h3>UDGP Penalty</h3>' +
+                '<label class="udgp-penalty-label">' +
+                '<input type="checkbox" id="marshal-penalty-cb"> ' +
+                '-2 Laps Penalty' +
                 '</label>';
 
-            // Insert at a visible location
-            var targetArea = document.querySelector('#selected_pilot');
-            if (targetArea && targetArea.parentNode) {
-                targetArea.parentNode.insertBefore(wrap, targetArea.nextSibling);
-            } else {
-                form.insertBefore(wrap, form.firstChild);
-            }
+            // Insert at top of sidebar
+            sidebar.insertBefore(section, sidebar.firstChild);
 
             // Attach event handler
             var cb = document.getElementById('marshal-penalty-cb');
@@ -271,8 +269,7 @@ function initPenaltySystem($) {
         '.penalty-cell { background: #fffbf0; }' +
         '.udgp-penalty-cb { width: 18px; height: 18px; cursor: pointer; }' +
         '.udgp-penalty-wrap { padding: 8px 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; margin: 10px 0; }' +
-        '.udgp-penalty-label { display: flex; align-items: center; gap: 8px; cursor: pointer; font-size: 14px; color: #856404; }' +
-        '.marshal-penalty { margin-bottom: 15px; }';
+        '.udgp-penalty-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }';
     document.head.appendChild(style);
 
     console.log('UDGP: Initialized on', isRunPage ? 'Run' : 'Marshal', 'page');
