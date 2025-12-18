@@ -225,22 +225,17 @@ function initPenaltySystem($) {
             }
         }
 
-        // Hook into race loading
-        var originalLoadRace = window.load_race;
-        if (typeof originalLoadRace === 'function') {
-            window.load_race = function() {
-                originalLoadRace.apply(this, arguments);
-
-                // Get race_id from current selection
-                setTimeout(function() {
-                    if (window.current_race_data && window.current_race_data.race_id) {
-                        marshalRaceId = window.current_race_data.race_id;
-                        socket.emit('get_penalties', { race_id: marshalRaceId });
-                    }
-                    injectMarshalCheckbox();
-                }, 100);
-            };
-        }
+        // Listen for pilot selection changes
+        $('#selected_pilot').on('change', function () {
+            // Wait for current_race_data to be updated
+            setTimeout(function () {
+                if (window.current_race_data && window.current_race_data.race_id) {
+                    marshalRaceId = window.current_race_data.race_id;
+                    socket.emit('get_penalties', { race_id: marshalRaceId });
+                }
+                injectMarshalCheckbox();
+            }, 200);
+        });
 
         // Observe DOM changes
         var marshalObserver = new MutationObserver(function(mutations) {
