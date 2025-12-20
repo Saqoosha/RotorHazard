@@ -64,30 +64,17 @@ function initPenaltySystem($) {
     // ========================================
 
     if (isRunPage) {
-        function getPilotIdForNode(nodeIndex) {
-            // Get pilot ID from rotorhazard.current_heatNodes
-            if (typeof rotorhazard !== 'undefined' &&
-                rotorhazard.current_heatNodes &&
-                rotorhazard.current_heatNodes[nodeIndex] &&
-                rotorhazard.current_heatNodes[nodeIndex].pilot_id) {
-                return rotorhazard.current_heatNodes[nodeIndex].pilot_id;
-            }
-            return null;
-        }
-
         updateRunCheckboxes = function() {
             document.querySelectorAll('.udgp-penalty-cb').forEach(function(cb) {
-                var nodeIndex = parseInt(cb.dataset.node);
-                var pilotId = getPilotIdForNode(nodeIndex);
+                var pilotId = cb.dataset.pilotId ? parseInt(cb.dataset.pilotId) : null;
                 cb.checked = pilotId && penalties[pilotId] === true;
             });
         };
 
         function onRunCheckboxChange(e) {
-            var nodeIndex = parseInt(e.target.dataset.node);
-            var pilotId = getPilotIdForNode(nodeIndex);
-
+            var pilotId = e.target.dataset.pilotId;
             if (pilotId) {
+                pilotId = parseInt(pilotId);
                 socket.emit('set_penalty', {
                     race_id: null, // Current race
                     pilot_id: pilotId,
@@ -117,16 +104,29 @@ function initPenaltySystem($) {
 
             // Add checkbox cells to each row
             var rows = table.querySelectorAll('tbody tr, tr:not(:first-child)');
-            rows.forEach(function(row, index) {
+            rows.forEach(function (row) {
                 if (row.querySelector('.penalty-cell')) return; // Already added
 
                 var pilotCell = row.querySelectorAll('td')[1];
                 if (!pilotCell) return;
 
+                // Get callsign from the row and find the matching pilot_id
+                var callsign = pilotCell.textContent.trim();
+                var pilotId = null;
+                if (typeof rotorhazard !== 'undefined' && rotorhazard.current_heatNodes) {
+                    for (var nodeIdx in rotorhazard.current_heatNodes) {
+                        var hn = rotorhazard.current_heatNodes[nodeIdx];
+                        if (hn && hn.callsign === callsign) {
+                            pilotId = hn.pilot_id;
+                            break;
+                        }
+                    }
+                }
+
                 var td = document.createElement('td');
                 td.className = 'penalty-cell';
                 td.style.cssText = 'text-align: center;';
-                td.innerHTML = '<input type="checkbox" class="udgp-penalty-cb" data-node="' + index + '" title="Apply -2 lap penalty">';
+                td.innerHTML = '<input type="checkbox" class="udgp-penalty-cb" data-pilot-id="' + (pilotId || '') + '" title="Apply -2 lap penalty">';
                 pilotCell.parentNode.insertBefore(td, pilotCell.nextSibling);
             });
 
