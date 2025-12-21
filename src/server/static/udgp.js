@@ -1,6 +1,6 @@
 /**
- * UDGP Penalty System
- * Adds -2 lap penalty checkbox to Run and Marshal pages
+ * UDGP Penalty & Disqualification System
+ * Adds -2 lap penalty and DQ (disqualified = 0 laps) checkboxes to Run and Marshal pages
  */
 
 jQuery(document).ready(function($) {
@@ -16,11 +16,11 @@ jQuery(document).ready(function($) {
     }
 
     waitForSocket(function() {
-        initPenaltySystem($);
+        initUDGPSystem($);
     });
 });
 
-function initPenaltySystem($) {
+function initUDGPSystem($) {
     'use strict';
 
     // Detect current page
@@ -31,13 +31,14 @@ function initPenaltySystem($) {
         return; // Not on a relevant page
     }
 
-    // Current penalties state
+    // Current state
     var penalties = {};
+    var disqualifications = {};
     var currentRaceId = null; // null = current race, int = saved race
 
     // Update functions (defined at this scope so updateAllCheckboxes can call them)
     var updateRunCheckboxes = function() {};
-    var updateMarshalCheckbox = function() {};
+    var updateMarshalCheckboxes = function() {};
 
     // ========================================
     // Socket.IO Event Handlers
@@ -50,12 +51,19 @@ function initPenaltySystem($) {
         updateAllCheckboxes();
     });
 
+    // Listen for disqualification data from server
+    socket.on('disqualifications_data', function(data) {
+        disqualifications = data.disqualifications || {};
+        currentRaceId = data.race_id;
+        updateAllCheckboxes();
+    });
+
     function updateAllCheckboxes() {
         if (isRunPage) {
             updateRunCheckboxes();
         }
         if (isMarshalPage) {
-            updateMarshalCheckbox();
+            updateMarshalCheckboxes();
         }
     }
 
@@ -65,13 +73,19 @@ function initPenaltySystem($) {
 
     if (isRunPage) {
         updateRunCheckboxes = function() {
+            // Update penalty checkboxes
             document.querySelectorAll('.udgp-penalty-cb').forEach(function(cb) {
                 var pilotId = cb.dataset.pilotId ? parseInt(cb.dataset.pilotId) : null;
                 cb.checked = pilotId && penalties[pilotId] === true;
             });
+            // Update DQ checkboxes
+            document.querySelectorAll('.udgp-dq-cb').forEach(function(cb) {
+                var pilotId = cb.dataset.pilotId ? parseInt(cb.dataset.pilotId) : null;
+                cb.checked = pilotId && disqualifications[pilotId] === true;
+            });
         };
 
-        function onRunCheckboxChange(e) {
+        function onRunPenaltyChange(e) {
             var pilotId = e.target.dataset.pilotId;
             if (pilotId) {
                 pilotId = parseInt(pilotId);
@@ -83,22 +97,42 @@ function initPenaltySystem($) {
             }
         }
 
-        // Add penalty column to leaderboard
-        function addPenaltyColumn() {
+        function onRunDQChange(e) {
+            var pilotId = e.target.dataset.pilotId;
+            if (pilotId) {
+                pilotId = parseInt(pilotId);
+                socket.emit('set_disqualification', {
+                    race_id: null, // Current race
+                    pilot_id: pilotId,
+                    disqualified: e.target.checked
+                });
+            }
+        }
+
+        // Add penalty and DQ columns to leaderboard
+        function addColumns() {
             var table = document.querySelector('.leaderboard');
             if (!table) return;
 
-            // Add header if not exists
+            // Add headers if not exists
             var headerRow = table.querySelector('thead tr, tr:first-child');
             if (headerRow && !headerRow.querySelector('.penalty-header')) {
                 // Find the Pilot column (usually 2nd column)
                 var pilotHeader = headerRow.querySelectorAll('th, td')[1];
                 if (pilotHeader) {
-                    var th = document.createElement('th');
-                    th.className = 'penalty-header';
-                    th.textContent = 'Penalty';
-                    th.style.cssText = 'width: 60px; text-align: center;';
-                    pilotHeader.parentNode.insertBefore(th, pilotHeader.nextSibling);
+                    // Add Penalty header
+                    var thPenalty = document.createElement('th');
+                    thPenalty.className = 'penalty-header';
+                    thPenalty.textContent = 'Penalty';
+                    thPenalty.style.cssText = 'width: 60px; text-align: center;';
+                    pilotHeader.parentNode.insertBefore(thPenalty, pilotHeader.nextSibling);
+
+                    // Add DQ header
+                    var thDQ = document.createElement('th');
+                    thDQ.className = 'dq-header';
+                    thDQ.textContent = 'DQ';
+                    thDQ.style.cssText = 'width: 50px; text-align: center;';
+                    thPenalty.parentNode.insertBefore(thDQ, thPenalty.nextSibling);
                 }
             }
 
@@ -123,25 +157,37 @@ function initPenaltySystem($) {
                     }
                 }
 
-                var td = document.createElement('td');
-                td.className = 'penalty-cell';
-                td.style.cssText = 'text-align: center;';
-                td.innerHTML = '<input type="checkbox" class="udgp-penalty-cb" data-pilot-id="' + (pilotId || '') + '" title="Apply -2 lap penalty">';
-                pilotCell.parentNode.insertBefore(td, pilotCell.nextSibling);
+                // Add Penalty cell
+                var tdPenalty = document.createElement('td');
+                tdPenalty.className = 'penalty-cell';
+                tdPenalty.style.cssText = 'text-align: center;';
+                tdPenalty.innerHTML = '<input type="checkbox" class="udgp-penalty-cb" data-pilot-id="' + (pilotId || '') + '" title="Apply -2 lap penalty">';
+                pilotCell.parentNode.insertBefore(tdPenalty, pilotCell.nextSibling);
+
+                // Add DQ cell
+                var tdDQ = document.createElement('td');
+                tdDQ.className = 'dq-cell';
+                tdDQ.style.cssText = 'text-align: center;';
+                tdDQ.innerHTML = '<input type="checkbox" class="udgp-dq-cb" data-pilot-id="' + (pilotId || '') + '" title="Disqualified (0 laps)">';
+                tdPenalty.parentNode.insertBefore(tdDQ, tdPenalty.nextSibling);
             });
 
             // Attach event handlers
             table.querySelectorAll('.udgp-penalty-cb').forEach(function(cb) {
-                cb.removeEventListener('change', onRunCheckboxChange);
-                cb.addEventListener('change', onRunCheckboxChange);
+                cb.removeEventListener('change', onRunPenaltyChange);
+                cb.addEventListener('change', onRunPenaltyChange);
+            });
+            table.querySelectorAll('.udgp-dq-cb').forEach(function(cb) {
+                cb.removeEventListener('change', onRunDQChange);
+                cb.addEventListener('change', onRunDQChange);
             });
 
             updateRunCheckboxes();
         }
 
-        // Observe DOM changes to add penalty column when leaderboard updates
+        // Observe DOM changes to add columns when leaderboard updates
         var runObserver = new MutationObserver(function(mutations) {
-            addPenaltyColumn();
+            addColumns();
         });
 
         var leaderboard = document.querySelector('#leaderboard');
@@ -153,22 +199,25 @@ function initPenaltySystem($) {
         }
 
         // Initial setup
-        setTimeout(addPenaltyColumn, 500);
+        setTimeout(addColumns, 500);
 
-        // Request current penalties
+        // Request current state
         socket.emit('get_penalties', { race_id: null });
+        socket.emit('get_disqualifications', { race_id: null });
 
-        // Also listen for heat changes to refresh penalties
+        // Also listen for heat changes to refresh
         socket.on('heat_data', function() {
             setTimeout(function() {
-                addPenaltyColumn();
+                addColumns();
                 socket.emit('get_penalties', { race_id: null });
+                socket.emit('get_disqualifications', { race_id: null });
             }, 200);
         });
 
-        // Clear penalties when Discard Laps is clicked
+        // Clear when Discard Laps is clicked
         $('button#discard_laps').on('click', function() {
             penalties = {};
+            disqualifications = {};
             updateRunCheckboxes();
         });
     }
@@ -180,15 +229,21 @@ function initPenaltySystem($) {
     if (isMarshalPage) {
         var marshalRaceId = null;
 
-        updateMarshalCheckbox = function() {
-            var cb = document.getElementById('marshal-penalty-cb');
-            if (!cb || !window.current_race_data) return;
+        updateMarshalCheckboxes = function() {
+            var penaltyCb = document.getElementById('marshal-penalty-cb');
+            var dqCb = document.getElementById('marshal-dq-cb');
+            if (!window.current_race_data) return;
 
             var pilotId = window.current_race_data.pilot_id;
-            cb.checked = pilotId && penalties[pilotId] === true;
+            if (penaltyCb) {
+                penaltyCb.checked = pilotId && penalties[pilotId] === true;
+            }
+            if (dqCb) {
+                dqCb.checked = pilotId && disqualifications[pilotId] === true;
+            }
         };
 
-        function onMarshalCheckboxChange(e) {
+        function onMarshalPenaltyChange(e) {
             if (!marshalRaceId || !window.current_race_data) return;
 
             var pilotId = window.current_race_data.pilot_id;
@@ -201,8 +256,21 @@ function initPenaltySystem($) {
             }
         }
 
-        // Inject checkbox into sidebar
-        function injectMarshalCheckbox() {
+        function onMarshalDQChange(e) {
+            if (!marshalRaceId || !window.current_race_data) return;
+
+            var pilotId = window.current_race_data.pilot_id;
+            if (pilotId) {
+                socket.emit('set_disqualification', {
+                    race_id: marshalRaceId,
+                    pilot_id: pilotId,
+                    disqualified: e.target.checked
+                });
+            }
+        }
+
+        // Inject checkboxes into sidebar
+        function injectMarshalCheckboxes() {
             var sidebar = document.querySelector('.sidebar-controls');
             if (!sidebar) return;
 
@@ -211,23 +279,31 @@ function initPenaltySystem($) {
                 return;
             }
 
-            // Create a section similar to other sidebar sections
+            // Create a section for UDGP controls
             var section = document.createElement('div');
-            section.className = 'control-block udgp-penalty-section';
+            section.className = 'control-block udgp-section';
             section.innerHTML =
-                '<h3>UDGP Penalty</h3>' +
-                '<label class="udgp-penalty-label">' +
+                '<h3>UDGP</h3>' +
+                '<label class="udgp-label">' +
                 '<input type="checkbox" id="marshal-penalty-cb"> ' +
                 '-2 Laps Penalty' +
+                '</label>' +
+                '<label class="udgp-label udgp-dq-label">' +
+                '<input type="checkbox" id="marshal-dq-cb"> ' +
+                'Disqualified (DQ)' +
                 '</label>';
 
             // Insert at top of sidebar
             sidebar.insertBefore(section, sidebar.firstChild);
 
-            // Attach event handler
-            var cb = document.getElementById('marshal-penalty-cb');
-            if (cb) {
-                cb.addEventListener('change', onMarshalCheckboxChange);
+            // Attach event handlers
+            var penaltyCb = document.getElementById('marshal-penalty-cb');
+            var dqCb = document.getElementById('marshal-dq-cb');
+            if (penaltyCb) {
+                penaltyCb.addEventListener('change', onMarshalPenaltyChange);
+            }
+            if (dqCb) {
+                dqCb.addEventListener('change', onMarshalDQChange);
             }
         }
 
@@ -238,14 +314,15 @@ function initPenaltySystem($) {
                 if (window.current_race_data && window.current_race_data.race_id) {
                     marshalRaceId = window.current_race_data.race_id;
                     socket.emit('get_penalties', { race_id: marshalRaceId });
+                    socket.emit('get_disqualifications', { race_id: marshalRaceId });
                 }
-                injectMarshalCheckbox();
+                injectMarshalCheckboxes();
             }, 200);
         });
 
         // Observe DOM changes
         var marshalObserver = new MutationObserver(function(mutations) {
-            injectMarshalCheckbox();
+            injectMarshalCheckboxes();
         });
 
         var marshalContent = document.querySelector('.page-marshal .panel-content');
@@ -257,7 +334,7 @@ function initPenaltySystem($) {
         }
 
         // Initial setup
-        setTimeout(injectMarshalCheckbox, 500);
+        setTimeout(injectMarshalCheckboxes, 500);
     }
 
     // ========================================
@@ -267,10 +344,13 @@ function initPenaltySystem($) {
     var style = document.createElement('style');
     style.textContent =
         '.penalty-header { background: #fff3cd !important; }' +
+        '.dq-header { background: #f8d7da !important; }' +
         '.penalty-cell { background: #fffbf0; }' +
-        '.udgp-penalty-cb { width: 18px; height: 18px; cursor: pointer; }' +
-        '.udgp-penalty-wrap { padding: 8px 12px; background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; margin: 10px 0; }' +
-        '.udgp-penalty-label { display: flex; align-items: center; gap: 8px; cursor: pointer; }';
+        '.dq-cell { background: #fff5f5; }' +
+        '.udgp-penalty-cb, .udgp-dq-cb { width: 18px; height: 18px; cursor: pointer; }' +
+        '.udgp-label { display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px; }' +
+        '.udgp-dq-label { color: #721c24; }' +
+        '.udgp-section { margin-bottom: 16px; }';
     document.head.appendChild(style);
 
     console.log('UDGP: Initialized on', isRunPage ? 'Run' : 'Marshal', 'page');
