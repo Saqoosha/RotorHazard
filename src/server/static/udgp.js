@@ -165,6 +165,12 @@ function initPenaltySystem($) {
                 socket.emit('get_penalties', { race_id: null });
             }, 200);
         });
+
+        // Clear penalties when Discard Laps is clicked
+        $('button#discard_laps').on('click', function() {
+            penalties = {};
+            updateRunCheckboxes();
+        });
     }
 
     // ========================================
