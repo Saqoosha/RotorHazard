@@ -267,7 +267,6 @@ function initUDGPSystem($) {
 
             var select = document.createElement('select');
             select.id = 'udgp-replay-select';
-            select.className = 'set_ui_option';
 
             var defaultOption = document.createElement('option');
             defaultOption.value = '';
