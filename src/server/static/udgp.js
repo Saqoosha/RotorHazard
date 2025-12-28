@@ -376,6 +376,194 @@ function initUDGPSystem($) {
 
         // Initial setup
         setTimeout(updateReplaySelector, 500);
+
+        // ========================================
+        // Web Announcements (AWS Polly TTS)
+        // ========================================
+
+        var webAnnounceEnabled = false;
+        var audioContext = null;
+        var audioQueue = [];
+        var isPlaying = false;
+        var preloadedSounds = {};
+
+        // Initialize Web Audio API
+        function initAudioContext() {
+            if (audioContext) return;
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                console.log('UDGP: AudioContext initialized');
+            } catch (e) {
+                console.error('UDGP: Failed to create AudioContext:', e);
+            }
+        }
+
+        // Preload static sound files
+        function preloadSounds() {
+            var sounds = ['count', 'go', 'count5'];
+            sounds.forEach(function(name) {
+                fetch('/udgp/static/' + name + '.mp3')
+                    .then(function(response) { return response.arrayBuffer(); })
+                    .then(function(arrayBuffer) {
+                        return audioContext.decodeAudioData(arrayBuffer);
+                    })
+                    .then(function(audioBuffer) {
+                        preloadedSounds[name] = audioBuffer;
+                        console.log('UDGP: Preloaded sound:', name);
+                    })
+                    .catch(function(err) {
+                        console.warn('UDGP: Failed to preload sound ' + name + ':', err);
+                    });
+            });
+        }
+
+        // Play preloaded sound
+        function playPreloadedSound(name) {
+            if (!audioContext || !preloadedSounds[name]) {
+                console.warn('UDGP: Sound not available:', name);
+                return Promise.resolve();
+            }
+            return new Promise(function(resolve) {
+                var source = audioContext.createBufferSource();
+                source.buffer = preloadedSounds[name];
+                source.connect(audioContext.destination);
+                source.onended = resolve;
+                source.start(0);
+            });
+        }
+
+        // Fetch TTS audio from server
+        function fetchTTSAudio(text) {
+            return fetch('/api/tts?text=' + encodeURIComponent(text))
+                .then(function(response) {
+                    if (!response.ok) {
+                        throw new Error('TTS request failed: ' + response.status);
+                    }
+                    return response.arrayBuffer();
+                })
+                .then(function(arrayBuffer) {
+                    return audioContext.decodeAudioData(arrayBuffer);
+                });
+        }
+
+        // Play audio buffer
+        function playAudioBuffer(audioBuffer) {
+            return new Promise(function(resolve) {
+                var source = audioContext.createBufferSource();
+                source.buffer = audioBuffer;
+                source.connect(audioContext.destination);
+                source.onended = resolve;
+                source.start(0);
+            });
+        }
+
+        // Process audio queue
+        function processAudioQueue() {
+            if (isPlaying || audioQueue.length === 0) return;
+            isPlaying = true;
+
+            var item = audioQueue.shift();
+            var playPromise;
+
+            if (item.type === 'preloaded') {
+                playPromise = playPreloadedSound(item.name);
+            } else if (item.type === 'tts') {
+                playPromise = fetchTTSAudio(item.text)
+                    .then(function(audioBuffer) {
+                        return playAudioBuffer(audioBuffer);
+                    })
+                    .catch(function(err) {
+                        console.error('UDGP: TTS playback error:', err);
+                    });
+            } else {
+                playPromise = Promise.resolve();
+            }
+
+            playPromise.then(function() {
+                isPlaying = false;
+                processAudioQueue();
+            });
+        }
+
+        // Queue audio for playback
+        function queueAudio(item) {
+            audioQueue.push(item);
+            processAudioQueue();
+        }
+
+        // Handle announce events
+        socket.on('udgp_announce', function(data) {
+            if (!webAnnounceEnabled) return;
+
+            // Ensure audio context is initialized (needs user interaction first)
+            if (!audioContext) {
+                initAudioContext();
+                if (audioContext) preloadSounds();
+            }
+            if (!audioContext) return;
+
+            console.log('UDGP: Announce event:', data);
+
+            switch (data.type) {
+                case 'countdown_start':
+                    // Play countdown beeps followed by TTS
+                    queueAudio({ type: 'tts', text: data.text });
+                    // Schedule countdown beeps (count.mp3 plays 3-2-1)
+                    setTimeout(function() {
+                        queueAudio({ type: 'preloaded', name: 'count' });
+                    }, 1500);
+                    break;
+
+                case 'race_start':
+                    // Play GO sound, then TTS
+                    queueAudio({ type: 'preloaded', name: 'go' });
+                    break;
+
+                case 'headshot':
+                case 'lap':
+                case 'final_lap':
+                case 'goal':
+                case 'time_elapsed':
+                case 'time_remaining':
+                case 'time_up':
+                case 'race_results':
+                    // Play TTS
+                    if (data.text) {
+                        queueAudio({ type: 'tts', text: data.text });
+                    }
+                    break;
+
+                default:
+                    console.log('UDGP: Unknown announce type:', data.type);
+            }
+        });
+
+        // Enable announcements on user interaction (required for AudioContext)
+        function enableWebAnnouncements() {
+            webAnnounceEnabled = true;
+            initAudioContext();
+            if (audioContext) {
+                // Resume if suspended (browser autoplay policy)
+                if (audioContext.state === 'suspended') {
+                    audioContext.resume();
+                }
+                preloadSounds();
+            }
+            console.log('UDGP: Web announcements enabled');
+        }
+
+        // Check server setting and auto-enable if enabled
+        // Note: Still requires user interaction to unlock AudioContext
+        document.addEventListener('click', function enableOnFirstClick() {
+            enableWebAnnouncements();
+            document.removeEventListener('click', enableOnFirstClick);
+        }, { once: true });
+
+        // Also try to enable on any audio control interaction
+        document.addEventListener('touchstart', function enableOnTouch() {
+            enableWebAnnouncements();
+            document.removeEventListener('touchstart', enableOnTouch);
+        }, { once: true });
     }
 
     // ========================================
