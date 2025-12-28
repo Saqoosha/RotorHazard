@@ -515,8 +515,13 @@ function initUDGPSystem($) {
                     break;
 
                 case 'race_start':
-                    // Play GO sound, then TTS
+                    // Play GO sound
                     queueAudio({ type: 'preloaded', name: 'go' });
+                    break;
+
+                case 'countdown_5sec':
+                    // Play last 5 seconds countdown beep
+                    playPreloadedSound('count5');
                     break;
 
                 case 'headshot':
