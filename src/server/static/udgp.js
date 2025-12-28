@@ -36,9 +36,11 @@ function initUDGPSystem($) {
     var disqualifications = {};
     var currentRaceId = null; // null = current race, int = saved race
 
-    // Replay state
-    var replayHeats = [];
-    var replayStatus = 'idle'; // 'idle', 'starting', 'replaying'
+    // Backup replay state
+    var backupFiles = [];
+    var backupHeats = [];
+    var backupReplayStatus = 'idle'; // 'idle', 'loading', 'starting', 'replaying'
+    var selectedBackupFile = null;
 
     // Update functions (defined at this scope so updateAllCheckboxes can call them)
     var updateRunCheckboxes = function() {};
@@ -188,111 +190,168 @@ function initUDGPSystem($) {
         });
 
         // ========================================
-        // Replay functionality
+        // Backup Replay functionality
         // ========================================
 
-        // Listen for replay races data
-        socket.on('replay_races', function(data) {
-            replayHeats = data.heats || [];
-            updateReplaySelector();
+        // Listen for backup files list
+        socket.on('backup_files_list', function(data) {
+            backupFiles = data.files || [];
+            updateBackupReplayUI();
         });
 
-        socket.on('replay_started', function(data) {
-            replayStatus = 'replaying';
-            updateReplayUI();
-            console.log('UDGP Replay: Started, total laps:', data.total_laps);
+        // Listen for backup races data
+        socket.on('backup_races_list', function(data) {
+            backupHeats = data.heats || [];
+            backupReplayStatus = 'idle';
+            updateBackupReplayUI();
         });
 
-        socket.on('replay_error', function(data) {
-            // Show error in status field (standard RH way)
-            var statusDiv = document.getElementById('udgp-replay-status');
+        socket.on('backup_error', function(data) {
+            var statusDiv = document.getElementById('udgp-backup-replay-status');
             if (statusDiv) {
                 statusDiv.textContent = 'Error: ' + (data.message || 'Unknown error');
                 statusDiv.className = 'form-note';
-                // Reset after 5 seconds
                 setTimeout(function() {
-                    replayStatus = 'idle';
-                    updateReplayUI();
+                    backupReplayStatus = 'idle';
+                    updateBackupReplayUI();
                 }, 5000);
             } else {
-                // Fallback to alert if status div not ready
-                alert('Replay Error: ' + (data.message || 'Unknown error'));
-                replayStatus = 'idle';
+                alert('Backup Replay Error: ' + (data.message || 'Unknown error'));
+                backupReplayStatus = 'idle';
             }
         });
 
-        // Request races when page loads
-        socket.emit('get_replay_races');
+        // Request backup files when page loads
+        socket.emit('get_backup_files');
 
-        function updateReplaySelector() {
+        function updateBackupReplayUI() {
             var container = document.getElementById('udgp-replay-container');
             if (!container) {
-                // Wait for panel to be created
-                setTimeout(updateReplaySelector, 200);
+                setTimeout(updateBackupReplayUI, 200);
                 return;
+            }
+
+            // Find or create backup replay section
+            var backupSection = document.getElementById('udgp-backup-replay-section');
+            if (!backupSection) {
+                // Create backup section
+                backupSection = document.createElement('div');
+                backupSection.id = 'udgp-backup-replay-section';
+                container.appendChild(backupSection);
             }
 
             // Clear existing content
-            container.innerHTML = '';
+            backupSection.innerHTML = '';
 
-            if (replayHeats.length === 0) {
-                var emptyMsg = document.createElement('p');
-                emptyMsg.className = 'form-note';
-                emptyMsg.textContent = 'No saved races available for replay.';
-                container.appendChild(emptyMsg);
-                return;
-            }
-
-            // Create form structure (standard RH panel format)
+            // Create form structure
             var formEl = document.createElement('ol');
             formEl.className = 'form';
 
-            // Race selector field (wrapped in <li> with label-block)
-            var selectorLi = document.createElement('li');
+            // Backup file selector
+            var fileSelectorLi = document.createElement('li');
+            var fileLabelBlock = document.createElement('div');
+            fileLabelBlock.className = 'label-block';
 
-            var labelBlock = document.createElement('div');
-            labelBlock.className = 'label-block';
+            var fileLabel = document.createElement('label');
+            fileLabel.setAttribute('for', 'udgp-backup-file-select');
+            fileLabel.textContent = 'Backup File';
+            fileLabelBlock.appendChild(fileLabel);
 
-            var selectorLabel = document.createElement('label');
-            selectorLabel.setAttribute('for', 'udgp-replay-select');
-            selectorLabel.textContent = 'Select Race';
-            labelBlock.appendChild(selectorLabel);
+            var fileDesc = document.createElement('p');
+            fileDesc.className = 'desc';
+            fileDesc.textContent = 'Select a backup database file';
+            fileLabelBlock.appendChild(fileDesc);
 
-            var desc = document.createElement('p');
-            desc.className = 'desc';
-            desc.textContent = 'Choose a saved race to replay';
-            labelBlock.appendChild(desc);
+            fileSelectorLi.appendChild(fileLabelBlock);
 
-            selectorLi.appendChild(labelBlock);
+            var fileSelect = document.createElement('select');
+            fileSelect.id = 'udgp-backup-file-select';
 
-            var select = document.createElement('select');
-            select.id = 'udgp-replay-select';
+            var defaultFileOption = document.createElement('option');
+            defaultFileOption.value = '';
+            defaultFileOption.textContent = '-- Select Backup File --';
+            fileSelect.appendChild(defaultFileOption);
 
-            var defaultOption = document.createElement('option');
-            defaultOption.value = '';
-            defaultOption.textContent = '-- Select Race --';
-            select.appendChild(defaultOption);
-
-            // Populate options
-            replayHeats.forEach(function(heat) {
-                heat.rounds.forEach(function(round) {
-                    var option = document.createElement('option');
-                    option.value = round.race_id;
-                    var label = heat.name + ' - Round ' + round.round_id;
-                    if (round.start_time) {
-                        label += ' (' + round.start_time + ')';
-                    }
-                    option.textContent = label;
-                    select.appendChild(option);
-                });
+            backupFiles.forEach(function(file) {
+                var option = document.createElement('option');
+                option.value = file;
+                option.textContent = file;
+                if (file === selectedBackupFile) {
+                    option.selected = true;
+                }
+                fileSelect.appendChild(option);
             });
 
-            selectorLi.appendChild(select);
-            formEl.appendChild(selectorLi);
+            fileSelect.onchange = function() {
+                selectedBackupFile = fileSelect.value;
+                if (selectedBackupFile) {
+                    backupReplayStatus = 'loading';
+                    updateBackupReplayUI();
+                    socket.emit('get_backup_races', { backup_file: selectedBackupFile });
+                } else {
+                    backupHeats = [];
+                    updateBackupReplayUI();
+                }
+            };
 
-            // Status display (wrapped in <li> with label-block)
+            fileSelectorLi.appendChild(fileSelect);
+            formEl.appendChild(fileSelectorLi);
+
+            // Race selector (only shown if backup file is selected and races are loaded)
+            if (selectedBackupFile && backupHeats.length > 0) {
+                var raceSelectorLi = document.createElement('li');
+                var raceLabelBlock = document.createElement('div');
+                raceLabelBlock.className = 'label-block';
+
+                var raceLabel = document.createElement('label');
+                raceLabel.setAttribute('for', 'udgp-backup-race-select');
+                raceLabel.textContent = 'Select Race';
+                raceLabelBlock.appendChild(raceLabel);
+
+                var raceDesc = document.createElement('p');
+                raceDesc.className = 'desc';
+                raceDesc.textContent = 'Choose a race from backup to replay';
+                raceLabelBlock.appendChild(raceDesc);
+
+                raceSelectorLi.appendChild(raceLabelBlock);
+
+                var raceSelect = document.createElement('select');
+                raceSelect.id = 'udgp-backup-race-select';
+
+                var defaultRaceOption = document.createElement('option');
+                defaultRaceOption.value = '';
+                defaultRaceOption.textContent = '-- Select Race --';
+                raceSelect.appendChild(defaultRaceOption);
+
+                backupHeats.forEach(function(heat) {
+                    heat.rounds.forEach(function(round) {
+                        var option = document.createElement('option');
+                        option.value = round.race_id;
+                        var label = heat.name + ' - Round ' + round.round_id;
+                        if (round.start_time) {
+                            label += ' (' + round.start_time + ')';
+                        }
+                        option.textContent = label;
+                        raceSelect.appendChild(option);
+                    });
+                });
+
+                raceSelectorLi.appendChild(raceSelect);
+                formEl.appendChild(raceSelectorLi);
+
+                // Set onchange handler for race selector
+                raceSelect.onchange = function() {
+                    // Update button state without rebuilding entire UI
+                    var button = document.getElementById('udgp-backup-replay-start');
+                    if (button) {
+                        var canStart = selectedBackupFile && raceSelect.value && backupReplayStatus === 'idle';
+                        button.disabled = !canStart;
+                    }
+                };
+            }
+
+            // Status display
             var statusLi = document.createElement('li');
-
             var statusLabelBlock = document.createElement('div');
             statusLabelBlock.className = 'label-block';
 
@@ -303,79 +362,79 @@ function initUDGPSystem($) {
             statusLi.appendChild(statusLabelBlock);
 
             var statusDiv = document.createElement('div');
-            statusDiv.id = 'udgp-replay-status';
+            statusDiv.id = 'udgp-backup-replay-status';
             statusDiv.className = 'form-note';
-            statusDiv.textContent = 'Idle';
+
+            var statusText = '';
+            switch (backupReplayStatus) {
+                case 'idle':
+                    statusText = 'Idle';
+                    break;
+                case 'loading':
+                    statusText = 'Loading races...';
+                    break;
+                case 'starting':
+                    statusText = 'Starting...';
+                    break;
+                case 'replaying':
+                    statusText = 'Replaying...';
+                    break;
+            }
+            statusDiv.textContent = statusText;
             statusLi.appendChild(statusDiv);
             formEl.appendChild(statusLi);
 
-            container.appendChild(formEl);
+            backupSection.appendChild(formEl);
 
-            // Button set (standard RH format)
+            // Button set
             var buttonSet = document.createElement('div');
             buttonSet.className = 'control-set';
 
             var button = document.createElement('button');
-            button.id = 'udgp-replay-start';
+            button.id = 'udgp-backup-replay-start';
             button.className = 'button';
             button.textContent = 'Start Replay';
-            button.disabled = true;
+
+            // Get race select after DOM is updated
+            var raceSelect = document.getElementById('udgp-backup-race-select');
+            var canStart = selectedBackupFile && raceSelect && raceSelect.value && backupReplayStatus === 'idle';
+            button.disabled = !canStart;
+
             button.onclick = function() {
-                var raceId = select.value;
-                if (raceId) {
-                    replayStatus = 'starting';
-                    updateReplayUI();
-                    socket.emit('udgp_start_replay', { race_id: parseInt(raceId) });
+                var raceSelect = document.getElementById('udgp-backup-race-select');
+                if (raceSelect && raceSelect.value) {
+                    backupReplayStatus = 'starting';
+                    updateBackupReplayUI();
+                    socket.emit('start_backup_replay', {
+                        backup_file: selectedBackupFile,
+                        race_id: parseInt(raceSelect.value)
+                    });
                 }
             };
 
             buttonSet.appendChild(button);
-            container.appendChild(buttonSet);
-
-            // Enable/disable button based on selection
-            select.onchange = function() {
-                button.disabled = !select.value || replayStatus !== 'idle';
-            };
-
-            updateReplayUI();
+            backupSection.appendChild(buttonSet);
         }
 
-        function updateReplayUI() {
-            var statusDiv = document.getElementById('udgp-replay-status');
-            var button = document.getElementById('udgp-replay-start');
-            var select = document.getElementById('udgp-replay-select');
-
-            if (statusDiv) {
-                var statusText = '';
-                switch (replayStatus) {
-                    case 'idle':
-                        statusText = 'Idle';
-                        break;
-                    case 'starting':
-                        statusText = 'Starting...';
-                        break;
-                    case 'replaying':
-                        statusText = 'Replaying...';
-                        break;
-                }
-                statusDiv.textContent = statusText;
+        // Handle replay_started for backup replay
+        socket.on('replay_started', function(data) {
+            if (data.backup_file) {
+                backupReplayStatus = 'replaying';
+                updateBackupReplayUI();
+                console.log('UDGP Replay: Started, total laps:', data.total_laps);
             }
+        });
 
-            if (button && select) {
-                button.disabled = replayStatus !== 'idle' || !select.value;
-            }
-        }
-
-        // Reset replay status when race stops
+        // Reset backup replay status when race stops
         socket.on('race_status', function(msg) {
             if (msg.race_status === 2) { // Race stopped
-                replayStatus = 'idle';
-                updateReplayUI();
+                backupReplayStatus = 'idle';
+                updateBackupReplayUI();
             }
         });
 
         // Initial setup
-        setTimeout(updateReplaySelector, 500);
+        setTimeout(updateBackupReplayUI, 500);
 
         // ========================================
         // Web Announcements (AWS Polly TTS)
