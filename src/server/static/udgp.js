@@ -400,7 +400,7 @@ function initUDGPSystem($) {
 
         // Preload static sound files
         function preloadSounds() {
-            var sounds = ['count', 'go', 'count5'];
+            var sounds = ['count', 'go', 'count5', 'p'];
             sounds.forEach(function(name) {
                 fetch('/udgp/static/' + name + '.mp3')
                     .then(function(response) { return response.arrayBuffer(); })
@@ -521,13 +521,20 @@ function initUDGPSystem($) {
 
                 case 'headshot':
                 case 'lap':
+                    // Play lap beep, then TTS
+                    queueAudio({ type: 'preloaded', name: 'p' });
+                    if (data.text) {
+                        queueAudio({ type: 'tts', text: data.text });
+                    }
+                    break;
+
                 case 'final_lap':
                 case 'goal':
                 case 'time_elapsed':
                 case 'time_remaining':
                 case 'time_up':
                 case 'race_results':
-                    // Play TTS
+                    // Play TTS only
                     if (data.text) {
                         queueAudio({ type: 'tts', text: data.text });
                     }
