@@ -383,6 +383,7 @@ function initUDGPSystem($) {
 
         var webAnnounceEnabled = false;
         var audioContext = null;
+        var gainNode = null;
         var audioQueue = [];
         var isPlaying = false;
         var preloadedSounds = {};
@@ -392,7 +393,24 @@ function initUDGPSystem($) {
             if (audioContext) return;
             try {
                 audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                console.log('UDGP: AudioContext initialized');
+
+                // Create GainNode for volume control
+                gainNode = audioContext.createGain();
+                gainNode.connect(audioContext.destination);
+
+                // Load saved volume setting (default: 100 = 1.0)
+                var savedVolume = 100;
+                if (typeof localStorage !== 'undefined') {
+                    var saved = localStorage.getItem('rotorhazard.udgp_web_announce_volume');
+                    if (saved !== null) {
+                        savedVolume = parseInt(saved, 10);
+                        if (isNaN(savedVolume)) savedVolume = 100;
+                    }
+                }
+                // Convert 0-100 to 0-1 for gain value
+                gainNode.gain.value = savedVolume / 100;
+
+                console.log('UDGP: AudioContext initialized with volume:', savedVolume);
             } catch (e) {
                 console.error('UDGP: Failed to create AudioContext:', e);
             }
@@ -426,7 +444,12 @@ function initUDGPSystem($) {
             return new Promise(function(resolve) {
                 var source = audioContext.createBufferSource();
                 source.buffer = preloadedSounds[name];
-                source.connect(audioContext.destination);
+                // Connect through gainNode if available, otherwise direct to destination
+                if (gainNode) {
+                    source.connect(gainNode);
+                } else {
+                    source.connect(audioContext.destination);
+                }
                 source.onended = resolve;
                 source.start(0);
             });
@@ -451,7 +474,12 @@ function initUDGPSystem($) {
             return new Promise(function(resolve) {
                 var source = audioContext.createBufferSource();
                 source.buffer = audioBuffer;
-                source.connect(audioContext.destination);
+                // Connect through gainNode if available, otherwise direct to destination
+                if (gainNode) {
+                    source.connect(gainNode);
+                } else {
+                    source.connect(audioContext.destination);
+                }
                 source.onended = resolve;
                 source.start(0);
             });
@@ -589,6 +617,133 @@ function initUDGPSystem($) {
             enableWebAnnouncements();
             document.removeEventListener('touchstart', enableOnTouch);
         }, { once: true });
+
+        // ========================================
+        // Web Announce Volume Control UI
+        // ========================================
+
+        // Add volume control UI to Audio Control panel
+        function addVolumeControlUI() {
+            // Find Audio Control panel
+            var panels = document.querySelectorAll('.panel');
+            var audioControlPanel = null;
+            for (var i = 0; i < panels.length; i++) {
+                var header = panels[i].querySelector('.panel-header h2');
+                if (header && header.textContent.trim() === 'Audio Control') {
+                    audioControlPanel = panels[i];
+                    break;
+                }
+            }
+
+            if (!audioControlPanel) {
+                // Panel not found yet, try again later
+                setTimeout(addVolumeControlUI, 500);
+                return;
+            }
+
+            // Check if already added
+            if (document.getElementById('set_web_announce_volume')) {
+                return;
+            }
+
+            // Find the form list (<ol class="form">)
+            var formList = audioControlPanel.querySelector('ol.form');
+            if (!formList) {
+                // Form list not found, try again later
+                setTimeout(addVolumeControlUI, 500);
+                return;
+            }
+
+            // Find Indicator Beeps Volume item to insert after it
+            var indicatorVolumeInput = document.getElementById('set_indicator_volume');
+            var insertAfter = null;
+            if (indicatorVolumeInput) {
+                // Find the parent <li> element
+                insertAfter = indicatorVolumeInput.closest('li');
+            }
+
+            // Create Web Announce Volume control
+            var volumeLi = document.createElement('li');
+
+            var labelBlock = document.createElement('div');
+            labelBlock.className = 'label-block';
+
+            var label = document.createElement('label');
+            label.setAttribute('for', 'set_web_announce_volume');
+            label.textContent = 'Web Announce Volume';
+            labelBlock.appendChild(label);
+
+            var desc = document.createElement('p');
+            desc.className = 'desc';
+            desc.innerHTML = 'Volume: <span id="web_announce_volume_value"></span>';
+            labelBlock.appendChild(desc);
+
+            volumeLi.appendChild(labelBlock);
+
+            var volumeInput = document.createElement('input');
+            volumeInput.type = 'range';
+            volumeInput.id = 'set_web_announce_volume';
+            volumeInput.min = '0';
+            volumeInput.max = '100';
+            volumeLi.appendChild(volumeInput);
+
+            // Insert after Indicator Beeps Volume, or at the end if not found
+            if (insertAfter && insertAfter.parentNode === formList) {
+                formList.insertBefore(volumeLi, insertAfter.nextSibling);
+            } else {
+                formList.appendChild(volumeLi);
+            }
+
+            // Load saved volume setting
+            var savedVolume = 100;
+            if (typeof localStorage !== 'undefined') {
+                var saved = localStorage.getItem('rotorhazard.udgp_web_announce_volume');
+                if (saved !== null) {
+                    savedVolume = parseInt(saved, 10);
+                    if (isNaN(savedVolume)) savedVolume = 100;
+                }
+            }
+            volumeInput.value = savedVolume;
+            document.getElementById('web_announce_volume_value').textContent = savedVolume;
+
+            // Update gainNode if audioContext is already initialized
+            if (gainNode) {
+                gainNode.gain.value = savedVolume / 100;
+            }
+
+            // Handle input event (real-time update)
+            volumeInput.addEventListener('input', function(event) {
+                var volume = parseInt(event.target.value, 10);
+                document.getElementById('web_announce_volume_value').textContent = volume;
+
+                // Update gainNode immediately
+                if (gainNode) {
+                    gainNode.gain.value = volume / 100;
+                }
+            });
+
+            // Handle change event (save to localStorage)
+            volumeInput.addEventListener('change', function(event) {
+                var volume = parseInt(event.target.value, 10);
+
+                // Save to localStorage
+                if (typeof localStorage !== 'undefined') {
+                    localStorage.setItem('rotorhazard.udgp_web_announce_volume', volume.toString());
+                }
+
+                // Update gainNode
+                if (gainNode) {
+                    gainNode.gain.value = volume / 100;
+                }
+
+                console.log('UDGP: Web announce volume set to:', volume);
+            });
+
+            console.log('UDGP: Volume control UI added to Audio Control panel');
+        }
+
+        // Initialize volume control UI
+        setTimeout(addVolumeControlUI, 500);
     }
 
     // ========================================
