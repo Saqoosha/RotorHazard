@@ -521,8 +521,8 @@ function initUDGPSystem($) {
 
                 case 'headshot':
                 case 'lap':
-                    // Play lap beep, then TTS
-                    queueAudio({ type: 'preloaded', name: 'p' });
+                    // Play lap beep immediately (can overlap with TTS)
+                    playPreloadedSound('p');
                     if (data.text) {
                         queueAudio({ type: 'tts', text: data.text });
                     }
