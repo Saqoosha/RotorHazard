@@ -242,9 +242,21 @@ function initUDGPSystem($) {
         });
 
         socket.on('replay_error', function(data) {
-            alert('Replay Error: ' + (data.message || 'Unknown error'));
-            replayStatus = 'idle';
-            updateReplayUI();
+            // Show error in status field (standard RH way)
+            var statusDiv = document.getElementById('udgp-replay-status');
+            if (statusDiv) {
+                statusDiv.textContent = 'Error: ' + (data.message || 'Unknown error');
+                statusDiv.className = 'form-note';
+                // Reset after 5 seconds
+                setTimeout(function() {
+                    replayStatus = 'idle';
+                    updateReplayUI();
+                }, 5000);
+            } else {
+                // Fallback to alert if status div not ready
+                alert('Replay Error: ' + (data.message || 'Unknown error'));
+                replayStatus = 'idle';
+            }
         });
 
         // Request races when page loads
@@ -262,14 +274,38 @@ function initUDGPSystem($) {
             container.innerHTML = '';
 
             if (replayHeats.length === 0) {
-                container.innerHTML = '<p style="color: #666;">No saved races available for replay.</p>';
+                var emptyMsg = document.createElement('p');
+                emptyMsg.className = 'form-note';
+                emptyMsg.textContent = 'No saved races available for replay.';
+                container.appendChild(emptyMsg);
                 return;
             }
 
-            // Create selector
+            // Create form structure (standard RH panel format)
+            var formEl = document.createElement('ol');
+            formEl.className = 'form';
+
+            // Race selector field (wrapped in <li> with label-block)
+            var selectorLi = document.createElement('li');
+
+            var labelBlock = document.createElement('div');
+            labelBlock.className = 'label-block';
+
+            var selectorLabel = document.createElement('label');
+            selectorLabel.setAttribute('for', 'udgp-replay-select');
+            selectorLabel.textContent = 'Select Race';
+            labelBlock.appendChild(selectorLabel);
+
+            var desc = document.createElement('p');
+            desc.className = 'desc';
+            desc.textContent = 'Choose a saved race to replay';
+            labelBlock.appendChild(desc);
+
+            selectorLi.appendChild(labelBlock);
+
             var select = document.createElement('select');
             select.id = 'udgp-replay-select';
-            select.style.cssText = 'width: 100%; padding: 8px; margin-bottom: 10px;';
+            select.className = 'set_ui_option';
 
             var defaultOption = document.createElement('option');
             defaultOption.value = '';
@@ -290,14 +326,38 @@ function initUDGPSystem($) {
                 });
             });
 
-            container.appendChild(select);
+            selectorLi.appendChild(select);
+            formEl.appendChild(selectorLi);
 
-            // Create Start Replay button
+            // Status display (wrapped in <li> with label-block)
+            var statusLi = document.createElement('li');
+
+            var statusLabelBlock = document.createElement('div');
+            statusLabelBlock.className = 'label-block';
+
+            var statusLabel = document.createElement('label');
+            statusLabel.textContent = 'Status';
+            statusLabelBlock.appendChild(statusLabel);
+
+            statusLi.appendChild(statusLabelBlock);
+
+            var statusDiv = document.createElement('div');
+            statusDiv.id = 'udgp-replay-status';
+            statusDiv.className = 'form-note';
+            statusDiv.textContent = 'Idle';
+            statusLi.appendChild(statusDiv);
+            formEl.appendChild(statusLi);
+
+            container.appendChild(formEl);
+
+            // Button set (standard RH format)
+            var buttonSet = document.createElement('div');
+            buttonSet.className = 'control-set';
+
             var button = document.createElement('button');
             button.id = 'udgp-replay-start';
             button.className = 'button';
             button.textContent = 'Start Replay';
-            button.style.cssText = 'width: 100%; padding: 10px; margin-bottom: 10px;';
             button.disabled = true;
             button.onclick = function() {
                 var raceId = select.value;
@@ -308,14 +368,8 @@ function initUDGPSystem($) {
                 }
             };
 
-            container.appendChild(button);
-
-            // Create status display
-            var statusDiv = document.createElement('div');
-            statusDiv.id = 'udgp-replay-status';
-            statusDiv.style.cssText = 'padding: 8px; background: #f5f5f5; border-radius: 4px; font-size: 12px; color: #666;';
-            statusDiv.textContent = 'Status: Idle';
-            container.appendChild(statusDiv);
+            buttonSet.appendChild(button);
+            container.appendChild(buttonSet);
 
             // Enable/disable button based on selection
             select.onchange = function() {
@@ -331,19 +385,16 @@ function initUDGPSystem($) {
             var select = document.getElementById('udgp-replay-select');
 
             if (statusDiv) {
-                var statusText = 'Status: ';
+                var statusText = '';
                 switch (replayStatus) {
                     case 'idle':
-                        statusText += 'Idle';
-                        statusDiv.style.color = '#666';
+                        statusText = 'Idle';
                         break;
                     case 'starting':
-                        statusText += 'Starting...';
-                        statusDiv.style.color = '#0066cc';
+                        statusText = 'Starting...';
                         break;
                     case 'replaying':
-                        statusText += 'Replaying...';
-                        statusDiv.style.color = '#00aa00';
+                        statusText = 'Replaying...';
                         break;
                 }
                 statusDiv.textContent = statusText;
