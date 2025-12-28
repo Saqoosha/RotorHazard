@@ -82,11 +82,6 @@ function initUDGPSystem($) {
                 var pilotId = cb.dataset.pilotId ? parseInt(cb.dataset.pilotId) : null;
                 cb.checked = pilotId && penalties[pilotId] === true;
             });
-            // Update DQ checkboxes
-            document.querySelectorAll('.udgp-dq-cb').forEach(function(cb) {
-                var pilotId = cb.dataset.pilotId ? parseInt(cb.dataset.pilotId) : null;
-                cb.checked = pilotId && disqualifications[pilotId] === true;
-            });
         };
 
         function onRunPenaltyChange(e) {
@@ -101,19 +96,7 @@ function initUDGPSystem($) {
             }
         }
 
-        function onRunDQChange(e) {
-            var pilotId = e.target.dataset.pilotId;
-            if (pilotId) {
-                pilotId = parseInt(pilotId);
-                socket.emit('set_disqualification', {
-                    race_id: null, // Current race
-                    pilot_id: pilotId,
-                    disqualified: e.target.checked
-                });
-            }
-        }
-
-        // Add penalty and DQ columns to leaderboard
+        // Add penalty column to leaderboard
         function addColumns() {
             var table = document.querySelector('.leaderboard');
             if (!table) return;
@@ -130,13 +113,6 @@ function initUDGPSystem($) {
                     thPenalty.textContent = 'Penalty';
                     thPenalty.style.cssText = 'width: 60px; text-align: center;';
                     pilotHeader.parentNode.insertBefore(thPenalty, pilotHeader.nextSibling);
-
-                    // Add DQ header
-                    var thDQ = document.createElement('th');
-                    thDQ.className = 'dq-header';
-                    thDQ.textContent = 'DQ';
-                    thDQ.style.cssText = 'width: 50px; text-align: center;';
-                    thPenalty.parentNode.insertBefore(thDQ, thPenalty.nextSibling);
                 }
             }
 
@@ -167,23 +143,12 @@ function initUDGPSystem($) {
                 tdPenalty.style.cssText = 'text-align: center;';
                 tdPenalty.innerHTML = '<input type="checkbox" class="udgp-penalty-cb" data-pilot-id="' + (pilotId || '') + '" title="Apply -2 lap penalty">';
                 pilotCell.parentNode.insertBefore(tdPenalty, pilotCell.nextSibling);
-
-                // Add DQ cell
-                var tdDQ = document.createElement('td');
-                tdDQ.className = 'dq-cell';
-                tdDQ.style.cssText = 'text-align: center;';
-                tdDQ.innerHTML = '<input type="checkbox" class="udgp-dq-cb" data-pilot-id="' + (pilotId || '') + '" title="Disqualified (0 laps)">';
-                tdPenalty.parentNode.insertBefore(tdDQ, tdPenalty.nextSibling);
             });
 
             // Attach event handlers
             table.querySelectorAll('.udgp-penalty-cb').forEach(function(cb) {
                 cb.removeEventListener('change', onRunPenaltyChange);
                 cb.addEventListener('change', onRunPenaltyChange);
-            });
-            table.querySelectorAll('.udgp-dq-cb').forEach(function(cb) {
-                cb.removeEventListener('change', onRunDQChange);
-                cb.addEventListener('change', onRunDQChange);
             });
 
             updateRunCheckboxes();
@@ -207,21 +172,18 @@ function initUDGPSystem($) {
 
         // Request current state
         socket.emit('get_penalties', { race_id: null });
-        socket.emit('get_disqualifications', { race_id: null });
 
         // Also listen for heat changes to refresh
         socket.on('heat_data', function() {
             setTimeout(function() {
                 addColumns();
                 socket.emit('get_penalties', { race_id: null });
-                socket.emit('get_disqualifications', { race_id: null });
             }, 200);
         });
 
         // Clear when Discard Laps is clicked
         $('button#discard_laps').on('click', function() {
             penalties = {};
-            disqualifications = {};
             updateRunCheckboxes();
         });
 
@@ -539,9 +501,7 @@ function initUDGPSystem($) {
     var style = document.createElement('style');
     style.textContent =
         '.penalty-header { background: #fff3cd !important; }' +
-        '.dq-header { background: #f8d7da !important; }' +
         '.penalty-cell { background: #fffbf0; }' +
-        '.dq-cell { background: #fff5f5; }' +
         '.udgp-penalty-cb, .udgp-dq-cb { width: 18px; height: 18px; cursor: pointer; }' +
         '.udgp-label { display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px; }' +
         '.udgp-dq-label { color: #721c24; }' +
