@@ -534,7 +534,20 @@ function initUDGPSystem($) {
                     break;
 
                 case 'final_lap':
+                    // Play TTS only
+                    if (data.text) {
+                        queueAudio({ type: 'tts', text: data.text });
+                    }
+                    break;
+
                 case 'goal':
+                    // Play lap beep immediately, then TTS
+                    playPreloadedSound('p');
+                    if (data.text) {
+                        queueAudio({ type: 'tts', text: data.text });
+                    }
+                    break;
+
                 case 'time_elapsed':
                 case 'time_remaining':
                 case 'time_up':
