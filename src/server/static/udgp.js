@@ -635,8 +635,18 @@ function initUDGPSystem($) {
                     }
                     break;
 
-                case 'time_elapsed':
                 case 'time_remaining':
+                    // Play TTS only if not already playing (skip if delayed)
+                    if (data.text) {
+                        if (isPlaying) {
+                            console.log('UDGP: Skipping time_remaining - audio in progress');
+                        } else {
+                            queueAudio({ type: 'tts', text: data.text });
+                        }
+                    }
+                    break;
+
+                case 'time_elapsed':
                 case 'time_up':
                 case 'race_results':
                     // Play TTS only
