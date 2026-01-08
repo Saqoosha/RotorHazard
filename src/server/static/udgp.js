@@ -514,10 +514,75 @@ function initUDGPSystem($) {
             });
         }
 
-        // Fetch TTS audio from server
+        // Web Speech API fallback for offline TTS
+        function speakWithBrowserTTS(text) {
+            return new Promise(function(resolve, reject) {
+                if (!window.speechSynthesis) {
+                    reject(new Error('Speech synthesis not supported'));
+                    return;
+                }
+
+                var utterance = new SpeechSynthesisUtterance(text);
+                utterance.lang = 'ja-JP';
+                utterance.rate = 1.2; // Slightly faster to match Polly x-fast
+
+                // Find Japanese voice with priority order
+                var voices = speechSynthesis.getVoices();
+                var preferredVoices = [
+                    'Otoya (Enhanced)',
+                    'Kyoko (Enhanced)',
+                    'Otoya',
+                    'Kyoko'
+                ];
+
+                var selectedVoice = null;
+                for (var i = 0; i < preferredVoices.length; i++) {
+                    var found = voices.find(function(v) {
+                        return v.name === preferredVoices[i];
+                    });
+                    if (found) {
+                        selectedVoice = found;
+                        break;
+                    }
+                }
+
+                // Fallback to any Japanese voice
+                if (!selectedVoice) {
+                    selectedVoice = voices.find(function(v) {
+                        return v.lang.startsWith('ja');
+                    });
+                }
+
+                if (selectedVoice) {
+                    utterance.voice = selectedVoice;
+                    console.log('UDGP: Using browser voice:', selectedVoice.name);
+                }
+
+                utterance.onend = resolve;
+                utterance.onerror = function(e) {
+                    reject(new Error('Speech synthesis error: ' + e.error));
+                };
+
+                speechSynthesis.speak(utterance);
+            });
+        }
+
+        // Fetch TTS audio from server (with timeout)
         function fetchTTSAudio(text) {
-            return fetch('/api/tts?text=' + encodeURIComponent(text))
+            // If offline, fail immediately
+            if (!navigator.onLine) {
+                return Promise.reject(new Error('Offline'));
+            }
+
+            // Use AbortController for 2 second timeout
+            var controller = new AbortController();
+            var timeoutId = setTimeout(function() { controller.abort(); }, 2000);
+
+            return fetch('/api/tts?text=' + encodeURIComponent(text), {
+                signal: controller.signal
+            })
                 .then(function(response) {
+                    clearTimeout(timeoutId);
                     if (!response.ok) {
                         throw new Error('TTS request failed: ' + response.status);
                     }
@@ -525,6 +590,10 @@ function initUDGPSystem($) {
                 })
                 .then(function(arrayBuffer) {
                     return audioContext.decodeAudioData(arrayBuffer);
+                })
+                .catch(function(err) {
+                    clearTimeout(timeoutId);
+                    throw err;
                 });
         }
 
@@ -560,7 +629,8 @@ function initUDGPSystem($) {
                         return playAudioBuffer(audioBuffer);
                     })
                     .catch(function(err) {
-                        console.error('UDGP: TTS playback error:', err);
+                        console.warn('UDGP: Polly TTS failed, trying browser fallback:', err);
+                        return speakWithBrowserTTS(item.text);
                     });
             } else {
                 playPromise = Promise.resolve();
