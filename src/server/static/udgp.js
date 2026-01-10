@@ -1,6 +1,6 @@
 /**
  * UDGP Penalty, Disqualification & Missing Lap System
- * Adds -2 lap penalty, DQ (disqualified = 0 laps) checkboxes, and +Lap (RSSI recovery) button
+ * Adds -2 lap penalty, DQ (disqualified = 0 laps) checkboxes, and 🩹 (RSSI recovery) button
  */
 
 jQuery(document).ready(function($) {
@@ -1020,6 +1020,22 @@ function initUDGPSystem($) {
     // ========================================
 
     if (isRunPage) {
+        // Track race status for missing lap button (RACING=1, DONE=2 are valid)
+        var missingLapRaceActive = false;
+
+        function updateMissingLapButtons() {
+            document.querySelectorAll('.udgp-add-missing-lap').forEach(function(btn) {
+                btn.disabled = !missingLapRaceActive;
+            });
+        }
+
+        // Listen for race status changes
+        socket.on('race_status', function(msg) {
+            // RACING=1, DONE=2 - button enabled during these states
+            missingLapRaceActive = (msg.race_status === 1 || msg.race_status === 2);
+            updateMissingLapButtons();
+        });
+
         // Listen for missing lap result
         socket.on('missing_lap_result', function(data) {
             var message = data.message || (data.success ? 'Lap added' : 'Failed');
@@ -1028,14 +1044,14 @@ function initUDGPSystem($) {
             // Show toast notification
             showMissingLapToast(data.success, message);
 
-            // Re-enable buttons
+            // Re-enable buttons (if race still active)
             document.querySelectorAll('.udgp-add-missing-lap').forEach(function(btn) {
-                btn.disabled = false;
-                btn.textContent = '+Lap';
+                btn.disabled = !missingLapRaceActive;
+                btn.textContent = '🩹';
             });
         });
 
-        // Add +Lap buttons to node panels
+        // Add 🩹 buttons to node panels
         function addMissingLapButtons() {
             var nodes = document.querySelectorAll('.node');
             nodes.forEach(function(nodeEl) {
@@ -1052,12 +1068,13 @@ function initUDGPSystem($) {
                 var raceHeader = nodeEl.querySelector('.race-header');
                 if (!raceHeader) return;
 
-                // Create the +Lap button (RSSI recovery)
+                // Create the 🩹 button (RSSI recovery)
                 var btn = document.createElement('button');
                 btn.className = 'udgp-add-missing-lap';
                 btn.dataset.nodeIndex = nodeIndex;
-                btn.textContent = '+Lap';
+                btn.textContent = '🩹';
                 btn.title = 'Add missing lap from RSSI peak detection';
+                btn.disabled = !missingLapRaceActive;
 
                 btn.addEventListener('click', function(e) {
                     e.preventDefault();
@@ -1136,19 +1153,8 @@ function initUDGPSystem($) {
         '.udgp-label { display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px; }' +
         '.udgp-dq-label { color: #721c24; }' +
         '.udgp-section { margin-bottom: 16px; }' +
-        // Missing lap button styles
-        '.udgp-add-missing-lap { ' +
-            'margin-left: 4px; ' +
-            'padding: 2px 8px; ' +
-            'font-size: 0.85em; ' +
-            'background: #28a745; ' +
-            'color: white; ' +
-            'border: none; ' +
-            'border-radius: 3px; ' +
-            'cursor: pointer; ' +
-        '}' +
-        '.udgp-add-missing-lap:hover { background: #218838; }' +
-        '.udgp-add-missing-lap:disabled { background: #6c757d; cursor: not-allowed; }' +
+        // Missing lap button styles (matches RH's .simulate_lap)
+        '.udgp-add-missing-lap { font-size: 1rem; margin-left: 4px; }' +
         // Toast notification styles
         '.udgp-toast { ' +
             'position: fixed; ' +
