@@ -1,6 +1,6 @@
 /**
- * UDGP Penalty & Disqualification System
- * Adds -2 lap penalty and DQ (disqualified = 0 laps) checkboxes to Run and Marshal pages
+ * UDGP Penalty, Disqualification & Missing Lap System
+ * Adds -2 lap penalty, DQ (disqualified = 0 laps) checkboxes, and +Lap (RSSI recovery) button
  */
 
 jQuery(document).ready(function($) {
@@ -1016,6 +1016,115 @@ function initUDGPSystem($) {
     }
 
     // ========================================
+    // Missing Lap (RSSI Peak Recovery) - Run Page Only
+    // ========================================
+
+    if (isRunPage) {
+        // Listen for missing lap result
+        socket.on('missing_lap_result', function(data) {
+            var message = data.message || (data.success ? 'Lap added' : 'Failed');
+            console.log('UDGP: Missing lap result:', message);
+
+            // Show toast notification
+            showMissingLapToast(data.success, message);
+
+            // Re-enable buttons
+            document.querySelectorAll('.udgp-add-missing-lap').forEach(function(btn) {
+                btn.disabled = false;
+                btn.textContent = '+Lap';
+            });
+        });
+
+        // Add +Lap buttons to node panels
+        function addMissingLapButtons() {
+            var nodes = document.querySelectorAll('.node');
+            nodes.forEach(function(nodeEl) {
+                // Get node index from element ID (e.g., "node-0" -> 0)
+                var nodeId = nodeEl.id;
+                if (!nodeId || !nodeId.startsWith('node-')) return;
+                var nodeIndex = parseInt(nodeId.replace('node-', ''));
+                if (isNaN(nodeIndex)) return;
+
+                // Check if button already exists
+                if (nodeEl.querySelector('.udgp-add-missing-lap')) return;
+
+                // Find the race-header where the existing "+ Lap" button is
+                var raceHeader = nodeEl.querySelector('.race-header');
+                if (!raceHeader) return;
+
+                // Create the +Lap button (RSSI recovery)
+                var btn = document.createElement('button');
+                btn.className = 'udgp-add-missing-lap';
+                btn.dataset.nodeIndex = nodeIndex;
+                btn.textContent = '+Lap';
+                btn.title = 'Add missing lap from RSSI peak detection';
+
+                btn.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    var idx = parseInt(this.dataset.nodeIndex);
+
+                    // Disable button while processing
+                    this.disabled = true;
+                    this.textContent = '...';
+
+                    socket.emit('add_missing_lap', { node_index: idx });
+                });
+
+                // Insert after the existing "+ Lap" button
+                var existingLapBtn = raceHeader.querySelector('.simulate_lap');
+                if (existingLapBtn) {
+                    existingLapBtn.parentNode.insertBefore(btn, existingLapBtn.nextSibling);
+                } else {
+                    raceHeader.appendChild(btn);
+                }
+            });
+        }
+
+        // Toast notification for missing lap result
+        function showMissingLapToast(success, message) {
+            // Remove existing toast
+            var existingToast = document.querySelector('.udgp-toast');
+            if (existingToast) {
+                existingToast.remove();
+            }
+
+            var toast = document.createElement('div');
+            toast.className = 'udgp-toast ' + (success ? 'udgp-toast-success' : 'udgp-toast-error');
+            toast.textContent = message;
+            document.body.appendChild(toast);
+
+            // Auto-remove after 3 seconds
+            setTimeout(function() {
+                toast.classList.add('udgp-toast-fade');
+                setTimeout(function() {
+                    toast.remove();
+                }, 300);
+            }, 3000);
+        }
+
+        // Observe DOM changes to add buttons when nodes are rendered
+        var missingLapObserver = new MutationObserver(function(mutations) {
+            addMissingLapButtons();
+        });
+
+        var raceResults = document.querySelector('.race-results');
+        if (raceResults) {
+            missingLapObserver.observe(raceResults, {
+                childList: true,
+                subtree: true
+            });
+        }
+
+        // Initial setup
+        setTimeout(addMissingLapButtons, 500);
+
+        // Also add buttons when heat changes
+        socket.on('heat_data', function() {
+            setTimeout(addMissingLapButtons, 200);
+        });
+    }
+
+    // ========================================
     // Styles
     // ========================================
 
@@ -1026,7 +1135,36 @@ function initUDGPSystem($) {
         '.udgp-penalty-cb, .udgp-dq-cb { width: 18px; height: 18px; cursor: pointer; }' +
         '.udgp-label { display: flex; align-items: center; gap: 8px; cursor: pointer; margin-bottom: 8px; }' +
         '.udgp-dq-label { color: #721c24; }' +
-        '.udgp-section { margin-bottom: 16px; }';
+        '.udgp-section { margin-bottom: 16px; }' +
+        // Missing lap button styles
+        '.udgp-add-missing-lap { ' +
+            'margin-left: 4px; ' +
+            'padding: 2px 8px; ' +
+            'font-size: 0.85em; ' +
+            'background: #28a745; ' +
+            'color: white; ' +
+            'border: none; ' +
+            'border-radius: 3px; ' +
+            'cursor: pointer; ' +
+        '}' +
+        '.udgp-add-missing-lap:hover { background: #218838; }' +
+        '.udgp-add-missing-lap:disabled { background: #6c757d; cursor: not-allowed; }' +
+        // Toast notification styles
+        '.udgp-toast { ' +
+            'position: fixed; ' +
+            'bottom: 20px; ' +
+            'left: 50%; ' +
+            'transform: translateX(-50%); ' +
+            'padding: 12px 24px; ' +
+            'border-radius: 4px; ' +
+            'color: white; ' +
+            'font-weight: bold; ' +
+            'z-index: 10000; ' +
+            'transition: opacity 0.3s; ' +
+        '}' +
+        '.udgp-toast-success { background: #28a745; }' +
+        '.udgp-toast-error { background: #dc3545; }' +
+        '.udgp-toast-fade { opacity: 0; }';
     document.head.appendChild(style);
 
     console.log('UDGP: Initialized on', isRunPage ? 'Run' : 'Marshal', 'page');
