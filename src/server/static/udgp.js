@@ -523,39 +523,54 @@ function initUDGPSystem($) {
                 }
 
                 var utterance = new SpeechSynthesisUtterance(text);
-                utterance.lang = 'ja-JP';
-                utterance.rate = 1.2; // Slightly faster to match Polly x-fast
-
-                // Find Japanese voice with priority order
                 var voices = speechSynthesis.getVoices();
-                var preferredVoices = [
-                    'Otoya (Enhanced)',
-                    'Kyoko (Enhanced)',
-                    'Otoya',
-                    'Kyoko'
-                ];
-
                 var selectedVoice = null;
-                for (var i = 0; i < preferredVoices.length; i++) {
-                    var found = voices.find(function(v) {
-                        return v.name === preferredVoices[i];
+
+                // Use voice from RH Audio Settings if available
+                if (typeof rotorhazard !== 'undefined' && rotorhazard.voice_language) {
+                    selectedVoice = voices.find(function (v) {
+                        return v.name === rotorhazard.voice_language;
                     });
-                    if (found) {
-                        selectedVoice = found;
-                        break;
+                    if (selectedVoice) {
+                        console.log('UDGP: Using RH selected voice:', selectedVoice.name);
                     }
                 }
 
-                // Fallback to any Japanese voice
+                // Fallback to Japanese voices if RH voice not set/found
                 if (!selectedVoice) {
-                    selectedVoice = voices.find(function(v) {
-                        return v.lang.startsWith('ja');
-                    });
+                    utterance.lang = 'ja-JP';
+                    utterance.rate = 1.2; // Slightly faster to match Polly x-fast
+
+                    var preferredVoices = [
+                        'Otoya (Enhanced)',
+                        'Kyoko (Enhanced)',
+                        'Otoya',
+                        'Kyoko'
+                    ];
+
+                    for (var i = 0; i < preferredVoices.length; i++) {
+                        var found = voices.find(function (v) {
+                            return v.name === preferredVoices[i];
+                        });
+                        if (found) {
+                            selectedVoice = found;
+                            break;
+                        }
+                    }
+
+                    // Fallback to any Japanese voice
+                    if (!selectedVoice) {
+                        selectedVoice = voices.find(function (v) {
+                            return v.lang.startsWith('ja');
+                        });
+                    }
                 }
 
                 if (selectedVoice) {
                     utterance.voice = selectedVoice;
-                    console.log('UDGP: Using browser voice:', selectedVoice.name);
+                    if (!utterance.lang) {
+                        console.log('UDGP: Using browser voice:', selectedVoice.name);
+                    }
                 }
 
                 utterance.onend = resolve;
