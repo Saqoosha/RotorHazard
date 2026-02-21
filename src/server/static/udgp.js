@@ -441,76 +441,54 @@ function initUDGPSystem($) {
         // ========================================
 
         var webAnnounceEnabled = false;
-        var audioContext = null;
-        var gainNode = null;
+        var announceVolume = 1.0; // 0.0 - 1.0
         var audioQueue = [];
         var isPlaying = false;
         var preloadedSounds = {};
 
-        // Initialize Web Audio API
-        function initAudioContext() {
-            if (audioContext) return;
-            try {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-
-                // Create GainNode for volume control
-                gainNode = audioContext.createGain();
-                gainNode.connect(audioContext.destination);
-
-                // Load saved volume setting (default: 100 = 1.0)
-                var savedVolume = 100;
-                if (typeof localStorage !== 'undefined') {
-                    var saved = localStorage.getItem('rotorhazard.udgp_web_announce_volume');
-                    if (saved !== null) {
-                        savedVolume = parseInt(saved, 10);
-                        if (isNaN(savedVolume)) savedVolume = 100;
-                    }
+        // Load saved volume setting
+        (function() {
+            if (typeof localStorage !== 'undefined') {
+                var saved = localStorage.getItem('rotorhazard.udgp_web_announce_volume');
+                if (saved !== null) {
+                    var v = parseInt(saved, 10);
+                    if (!isNaN(v)) announceVolume = v / 100;
                 }
-                // Convert 0-100 to 0-1 for gain value
-                gainNode.gain.value = savedVolume / 100;
-
-                console.log('UDGP: AudioContext initialized with volume:', savedVolume);
-            } catch (e) {
-                console.error('UDGP: Failed to create AudioContext:', e);
             }
-        }
+        })();
 
-        // Preload static sound files
+        // Preload static sound files using HTML5 Audio elements (same as RH's play_mp3_beep)
         function preloadSounds() {
             var sounds = ['count', 'go', 'count5', 'p'];
             sounds.forEach(function(name) {
-                fetch('/udgp/static/' + name + '.mp3')
-                    .then(function(response) { return response.arrayBuffer(); })
-                    .then(function(arrayBuffer) {
-                        return audioContext.decodeAudioData(arrayBuffer);
-                    })
-                    .then(function(audioBuffer) {
-                        preloadedSounds[name] = audioBuffer;
-                        console.log('UDGP: Preloaded sound:', name);
-                    })
-                    .catch(function(err) {
-                        console.warn('UDGP: Failed to preload sound ' + name + ':', err);
-                    });
+                var audio = new Audio('/udgp/static/' + name + '.mp3');
+                audio.preload = 'auto';
+                preloadedSounds[name] = audio;
+                console.log('UDGP: Preloading sound:', name);
             });
         }
 
-        // Play preloaded sound
+        // Play preloaded sound using HTML5 Audio (matches RH's play_mp3_beep approach)
         function playPreloadedSound(name) {
-            if (!audioContext || !preloadedSounds[name]) {
+            var audio = preloadedSounds[name];
+            if (!audio) {
                 console.warn('UDGP: Sound not available:', name);
                 return Promise.resolve();
             }
             return new Promise(function(resolve) {
-                var source = audioContext.createBufferSource();
-                source.buffer = preloadedSounds[name];
-                // Connect through gainNode if available, otherwise direct to destination
-                if (gainNode) {
-                    source.connect(gainNode);
-                } else {
-                    source.connect(audioContext.destination);
-                }
-                source.onended = resolve;
-                source.start(0);
+                // Clone to allow overlapping playback
+                var clone = audio.cloneNode();
+                // Apply volume from gainNode setting
+                clone.volume = announceVolume;
+                clone.onended = resolve;
+                clone.onerror = function() {
+                    console.warn('UDGP: Error playing sound:', name);
+                    resolve();
+                };
+                clone.play().catch(function(err) {
+                    console.warn('UDGP: play() rejected for', name, err);
+                    resolve();
+                });
             });
         }
 
@@ -582,49 +560,27 @@ function initUDGPSystem($) {
             });
         }
 
-        // Fetch TTS audio from server (with timeout)
-        function fetchTTSAudio(text) {
-            // If offline, fail immediately
-            if (!navigator.onLine) {
-                return Promise.reject(new Error('Offline'));
-            }
-
-            // Use AbortController for 2 second timeout
-            var controller = new AbortController();
-            var timeoutId = setTimeout(function() { controller.abort(); }, 2000);
-
-            return fetch('/api/tts?text=' + encodeURIComponent(text), {
-                signal: controller.signal
-            })
-                .then(function(response) {
+        // Play TTS audio using HTML5 Audio element (same approach as RH's mp3 playback)
+        function playTTSAudio(text) {
+            return new Promise(function(resolve, reject) {
+                var audio = new Audio('/api/tts?text=' + encodeURIComponent(text));
+                audio.volume = announceVolume;
+                audio.onended = resolve;
+                audio.onerror = function() {
+                    reject(new Error('TTS audio playback failed'));
+                };
+                // Timeout: if audio doesn't start within 3 seconds, reject
+                var timeoutId = setTimeout(function() {
+                    audio.pause();
+                    reject(new Error('TTS audio timeout'));
+                }, 3000);
+                audio.oncanplaythrough = function() {
                     clearTimeout(timeoutId);
-                    if (!response.ok) {
-                        throw new Error('TTS request failed: ' + response.status);
-                    }
-                    return response.arrayBuffer();
-                })
-                .then(function(arrayBuffer) {
-                    return audioContext.decodeAudioData(arrayBuffer);
-                })
-                .catch(function(err) {
+                };
+                audio.play().catch(function(err) {
                     clearTimeout(timeoutId);
-                    throw err;
+                    reject(err);
                 });
-        }
-
-        // Play audio buffer
-        function playAudioBuffer(audioBuffer) {
-            return new Promise(function(resolve) {
-                var source = audioContext.createBufferSource();
-                source.buffer = audioBuffer;
-                // Connect through gainNode if available, otherwise direct to destination
-                if (gainNode) {
-                    source.connect(gainNode);
-                } else {
-                    source.connect(audioContext.destination);
-                }
-                source.onended = resolve;
-                source.start(0);
             });
         }
 
@@ -639,10 +595,7 @@ function initUDGPSystem($) {
             if (item.type === 'preloaded') {
                 playPromise = playPreloadedSound(item.name);
             } else if (item.type === 'tts') {
-                playPromise = fetchTTSAudio(item.text)
-                    .then(function(audioBuffer) {
-                        return playAudioBuffer(audioBuffer);
-                    })
+                playPromise = playTTSAudio(item.text)
                     .catch(function(err) {
                         console.warn('UDGP: Polly TTS failed, trying browser fallback:', err);
                         return speakWithBrowserTTS(item.text);
@@ -651,10 +604,14 @@ function initUDGPSystem($) {
                 playPromise = Promise.resolve();
             }
 
-            playPromise.then(function() {
-                isPlaying = false;
-                processAudioQueue();
-            });
+            playPromise
+                .catch(function(err) {
+                    console.error('UDGP: Audio playback error:', err);
+                })
+                .then(function() {
+                    isPlaying = false;
+                    processAudioQueue();
+                });
         }
 
         // Queue audio for playback
@@ -666,13 +623,6 @@ function initUDGPSystem($) {
         // Handle announce events
         socket.on('udgp_announce', function(data) {
             if (!webAnnounceEnabled) return;
-
-            // Ensure audio context is initialized (needs user interaction first)
-            if (!audioContext) {
-                initAudioContext();
-                if (audioContext) preloadSounds();
-            }
-            if (!audioContext) return;
 
             console.log('UDGP: Announce event:', data);
 
@@ -745,32 +695,11 @@ function initUDGPSystem($) {
             }
         });
 
-        // Enable announcements on user interaction (required for AudioContext)
-        function enableWebAnnouncements() {
-            webAnnounceEnabled = true;
-            initAudioContext();
-            if (audioContext) {
-                // Resume if suspended (browser autoplay policy)
-                if (audioContext.state === 'suspended') {
-                    audioContext.resume();
-                }
-                preloadSounds();
-            }
-            console.log('UDGP: Web announcements enabled');
-        }
-
-        // Check server setting and auto-enable if enabled
-        // Note: Still requires user interaction to unlock AudioContext
-        document.addEventListener('click', function enableOnFirstClick() {
-            enableWebAnnouncements();
-            document.removeEventListener('click', enableOnFirstClick);
-        }, { once: true });
-
-        // Also try to enable on any audio control interaction
-        document.addEventListener('touchstart', function enableOnTouch() {
-            enableWebAnnouncements();
-            document.removeEventListener('touchstart', enableOnTouch);
-        }, { once: true });
+        // Initialize immediately at page load
+        // HTML5 Audio elements don't require AudioContext or user interaction in OBS
+        webAnnounceEnabled = true;
+        preloadSounds();
+        console.log('UDGP: Web announcements enabled, volume:', announceVolume);
 
         // ========================================
         // Web Announce Volume Control UI
@@ -859,35 +788,23 @@ function initUDGPSystem($) {
             }
             volumeInput.value = savedVolume;
             document.getElementById('web_announce_volume_value').textContent = savedVolume;
-
-            // Update gainNode if audioContext is already initialized
-            if (gainNode) {
-                gainNode.gain.value = savedVolume / 100;
-            }
+            announceVolume = savedVolume / 100;
 
             // Handle input event (real-time update)
             volumeInput.addEventListener('input', function(event) {
                 var volume = parseInt(event.target.value, 10);
                 document.getElementById('web_announce_volume_value').textContent = volume;
-
-                // Update gainNode immediately
-                if (gainNode) {
-                    gainNode.gain.value = volume / 100;
-                }
+                announceVolume = volume / 100;
             });
 
             // Handle change event (save to localStorage)
             volumeInput.addEventListener('change', function(event) {
                 var volume = parseInt(event.target.value, 10);
+                announceVolume = volume / 100;
 
                 // Save to localStorage
                 if (typeof localStorage !== 'undefined') {
                     localStorage.setItem('rotorhazard.udgp_web_announce_volume', volume.toString());
-                }
-
-                // Update gainNode
-                if (gainNode) {
-                    gainNode.gain.value = volume / 100;
                 }
 
                 console.log('UDGP: Web announce volume set to:', volume);
